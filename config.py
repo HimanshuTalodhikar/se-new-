@@ -71,8 +71,8 @@ class Settings:
 
     # Security and external service secrets must come from environment variables.
     dashboard_api_key: str = os.getenv("DASHBOARD_API_KEY", "change-me")
-    gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
-    gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+    ollama_model: str = os.getenv("OLLAMA_MODEL", "phi3:mini")
 
     cameras: dict[str, str] = field(default_factory=_parse_cameras)
     camera_auth: dict[str, dict[str, str]] = field(default_factory=lambda: _json("CAMERA_AUTH_JSON", {}))
@@ -93,10 +93,10 @@ class Settings:
     target_fps: float = _float("TARGET_FPS", 8.0)
     ai_every_n_saved_frames: int = _int("AI_EVERY_N_SAVED_FRAMES", 1)
     ai_enabled: bool = _bool("AI_ENABLED", True)
-    gemini_retries: int = _int("GEMINI_RETRIES", 3)
-    gemini_max_words: int = _int("GEMINI_MAX_WORDS", 22)
+    ai_retries: int = _int("AI_RETRIES", 3)
+    ai_max_words: int = _int("AI_MAX_WORDS", 22)
     ai_min_interval_seconds: float = _float("AI_MIN_INTERVAL_SECONDS", 0.0)
-    ai_quota_backoff_seconds: float = _float("AI_QUOTA_BACKOFF_SECONDS", 3600.0)
+    ai_error_backoff_seconds: float = _float("AI_ERROR_BACKOFF_SECONDS", 120.0)
     object_detection_enabled: bool = _bool("OBJECT_DETECTION_ENABLED", True)
     object_detection_backend: str = os.getenv("OBJECT_DETECTION_BACKEND", "auto")
     object_confidence_threshold: float = _float("OBJECT_CONFIDENCE_THRESHOLD", 0.35)

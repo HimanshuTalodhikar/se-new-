@@ -1,6 +1,6 @@
 # Distributed AI Surveillance System
 
-This project upgrades the original single-container OpenCV + Gemini dashboard into a production-style distributed surveillance pipeline.
+This project upgrades the original single-container OpenCV dashboard into a production-style distributed surveillance pipeline with local Ollama AI.
 
 ## Architecture
 
@@ -41,7 +41,7 @@ Open the dashboard:
 http://127.0.0.1:8000/?api_key=change-me
 ```
 
-Set a real dashboard key and Gemini key in `.env` for real deployments.
+Set a real dashboard key in `.env` for real deployments. Ollama runs locally on your host PC.
 
 ## Configuration
 
@@ -50,7 +50,8 @@ Set a real dashboard key and Gemini key in `.env` for real deployments.
 Important variables:
 
 - `DASHBOARD_API_KEY`: API key required for dashboard and `/api/status`.
-- `GEMINI_API_KEY`: Gemini key used by workers. No key disables AI gracefully.
+- `OLLAMA_BASE_URL`: Ollama API URL used by workers, usually `http://host.docker.internal:11434` from Docker.
+- `OLLAMA_MODEL`: Local Ollama model name, default `phi3:mini`.
 - `CAMERAS`: JSON map of camera IDs to stream URLs.
 - `CAMERA_AUTH_JSON`: Optional JSON auth map for cameras.
 - `HOST_OS`: `auto`, `Windows`, `Linux`, or `Darwin`.
@@ -61,9 +62,9 @@ Important variables:
 - `OBJECT_DETECTION_ENABLED`: Enables person annotations on saved frames.
 - `OBJECT_DETECTION_BACKEND`: `auto`, `dnn`, or `opencv`. `auto` uses OpenCV DNN and falls back to HOG person detection.
 - `OBJECT_CONFIDENCE_THRESHOLD`: Minimum DNN person confidence.
-- `GEMINI_MAX_WORDS`: Keeps Gemini summaries short for dashboard readability.
-- `AI_MIN_INTERVAL_SECONDS`: Minimum delay between Gemini calls per camera. Use `0` for every analyzed frame.
-- `AI_QUOTA_BACKOFF_SECONDS`: Cooldown after Gemini quota/rate-limit errors.
+- `AI_MAX_WORDS`: Keeps Ollama summaries short for dashboard readability.
+- `AI_MIN_INTERVAL_SECONDS`: Minimum delay between Ollama calls per camera. Use `0` for every analyzed frame.
+- `AI_ERROR_BACKOFF_SECONDS`: Cooldown after local Ollama errors.
 
 Camera auth can be embedded directly:
 
@@ -81,7 +82,7 @@ Or provided separately:
 
 - Dashboard binds to localhost only: `127.0.0.1:8000:8000`.
 - API-key middleware returns HTTP 401 for unauthorized dashboard access.
-- Gemini keys are environment variables, not hardcoded source.
+- Ollama runs locally, so no cloud AI API key is required.
 - Requests are logged as structured JSON.
 - Suspicious non-local access attempts are logged.
 - Camera credentials are supported through URL auth or `CAMERA_AUTH_JSON`.
@@ -89,7 +90,7 @@ Or provided separately:
 ## Stability
 
 - Workers reconnect automatically when a camera disconnects.
-- Gemini calls retry before returning a failure summary.
+- Ollama calls retry before returning a local fallback summary.
 - Docker services use `restart: unless-stopped`.
 - Load balancer marks workers unhealthy after missed heartbeats.
 - Cameras are reassigned when a worker becomes unhealthy.
@@ -154,7 +155,7 @@ Event shape:
   "timestamp": "2026-05-23T12:00:00Z",
   "frame_id": 300,
   "camera_status": "connected",
-  "ai_summary": "Short Gemini summary",
+  "ai_summary": "Short Ollama summary",
   "frame_path": "/detections/camera1_latest.jpg"
 }
 ```

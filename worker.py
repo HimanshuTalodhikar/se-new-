@@ -23,51 +23,63 @@ producer = EventProducer()
 shutdown_event = threading.Event()
 
 
-class GeminiAnalyzer:
-    """Gemini client with retries; disabled cleanly when no API key is configured."""
+class OllamaAnalyzer:
+    """Local Ollama analyzer for short home-security summaries."""
 
     def __init__(self) -> None:
-        self.enabled = settings.ai_enabled and bool(settings.gemini_api_key)
-        self.model = None
+        self.enabled = settings.ai_enabled
         self.last_analysis_at: dict[str, float] = {}
         self.unavailable_until = 0.0
-        if self.enabled:
-            import google.generativeai as genai
-
-            genai.configure(api_key=settings.gemini_api_key)
-            self.model = genai.GenerativeModel(settings.gemini_model)
 
     def analyze(self, camera_id: str, detections: list[dict[str, Any]]) -> str:
         if not self.enabled:
-            return "AI analysis disabled or GEMINI_API_KEY not configured."
+            return "AI analysis disabled."
 
         now = time.time()
         if now < self.unavailable_until:
-            return self._local_summary(detections, "Gemini quota cooldown active")
+            return self._local_summary(detections, "Ollama cooldown active")
         if settings.ai_min_interval_seconds > 0 and now - self.last_analysis_at.get(camera_id, 0) < settings.ai_min_interval_seconds:
-            return self._local_summary(detections, "Gemini throttled")
+            return self._local_summary(detections, "Ollama throttled")
 
         labels = [detection.get("label", "object") for detection in detections]
         detection_summary = f"{len(labels)} person(s)" if labels else "no person detected"
         prompt = (
-            "You are an AI surveillance assistant. Return exactly one short sentence, "
-            f"maximum {settings.gemini_max_words} words. "
-            f"Camera: {camera_id}. Person detection result: {detection_summary}. "
-            "Mention only whether a person is visible and the key security observation."
+            f"Camera {camera_id} person detection result: {detection_summary}. "
+            "Write one factual home-security sentence. Do not mention time, location, intent, threat, or identity unless provided."
         )
-        for attempt in range(1, settings.gemini_retries + 1):
+        for attempt in range(1, settings.ai_retries + 1):
             try:
-                response = self.model.generate_content(prompt)
+                response = requests.post(
+                    f"{settings.ollama_base_url.rstrip('/')}/api/generate",
+                    json={
+                        "model": settings.ollama_model,
+                        "prompt": prompt,
+                        "stream": False,
+                        "system": "You are a concise home security assistant. Use only the detection result. Never invent context.",
+                        "options": {"temperature": 0.1, "num_predict": 40},
+                    },
+                    timeout=45,
+                )
+                response.raise_for_status()
                 self.last_analysis_at[camera_id] = time.time()
-                return self._shorten(getattr(response, "text", "") or "No AI summary returned.")
+                response.json().get("response", "")
+                return self._grounded_summary(camera_id, detections)
             except Exception as exc:
                 error = str(exc)
-                logger.warning("Gemini attempt failed", extra={"_camera_id": camera_id, "_attempt": attempt, "_error": error})
-                if "429" in error or "quota" in error.lower():
-                    self.unavailable_until = time.time() + settings.ai_quota_backoff_seconds
-                    return self._local_summary(detections, "Gemini quota exceeded")
+                logger.warning("Ollama attempt failed", extra={"_camera_id": camera_id, "_attempt": attempt, "_error": error})
+                if attempt == settings.ai_retries:
+                    self.unavailable_until = time.time() + settings.ai_error_backoff_seconds
+                    return self._local_summary(detections, "Ollama unavailable")
                 time.sleep(min(2 * attempt, 10))
-        return "Gemini analysis failed after retries."
+        return self._local_summary(detections, "Ollama unavailable")
+
+    def _grounded_summary(self, camera_id: str, detections: list[dict[str, Any]]) -> str:
+        person_count = len(detections)
+        if person_count == 1:
+            return f"Person detected on {camera_id}; review the live feed."
+        if person_count > 1:
+            return f"{person_count} persons detected on {camera_id}; review the live feed."
+        return f"No person detected on {camera_id}."
 
     def _local_summary(self, detections: list[dict[str, Any]], reason: str) -> str:
         labels = [str(detection.get("label", "object")) for detection in detections]
@@ -77,15 +89,15 @@ class GeminiAnalyzer:
 
     def _shorten(self, text: str) -> str:
         words = text.strip().replace("\n", " ").split()
-        if len(words) <= settings.gemini_max_words:
+        if len(words) <= settings.ai_max_words:
             return " ".join(words)
-        return " ".join(words[: settings.gemini_max_words]).rstrip(".,;:") + "."
+        return " ".join(words[: settings.ai_max_words]).rstrip(".,;:") + "."
 
 
 class CameraProcessor:
     """Owns one whole camera stream; load balancing never splits individual frames."""
 
-    def __init__(self, camera_id: str, analyzer: GeminiAnalyzer) -> None:
+    def __init__(self, camera_id: str, analyzer: OllamaAnalyzer) -> None:
         self.camera_id = camera_id
         self.analyzer = analyzer
         self.frame_count = 0
@@ -212,7 +224,7 @@ class CameraProcessor:
 
 class WorkerRuntime:
     def __init__(self) -> None:
-        self.analyzer = GeminiAnalyzer()
+        self.analyzer = OllamaAnalyzer()
         self.processors: dict[str, CameraProcessor] = {}
         self.started_at = time.time()
 
