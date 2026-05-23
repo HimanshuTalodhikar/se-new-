@@ -1,0 +1,17 @@
+services:
+  camera-app:
+
+    build: .
+
+    container_name: camera-app
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      - .:/app
+      - ./detections:/app/detections
+
+    restart: "no"
+
+    command: python -u app.py
