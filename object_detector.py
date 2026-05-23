@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -42,11 +43,12 @@ class ObjectDetector:
 
     def detect(self, frame: np.ndarray) -> tuple[list[dict[str, Any]], np.ndarray]:
         annotated = frame.copy()
-        detections = self._detect_dnn(frame) if self.dnn is not None else []
+        detections = self._detect_dnn_all_orientations(frame) if self.dnn is not None else []
 
         if not detections and settings.object_detection_backend.lower() != "dnn":
             detections.extend(self._detect_people(frame))
 
+        detections = self._post_process(frame, detections)
         for detection in detections:
             self._draw_detection(annotated, detection)
 
@@ -74,6 +76,23 @@ class ObjectDetector:
         temporary_path.replace(path)
         return path
 
+    def _detect_dnn_all_orientations(self, frame: np.ndarray) -> list[Detection]:
+        transforms = [("none", frame)]
+        if settings.person_rotation_detection:
+            transforms.extend(
+                [
+                    ("cw", cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)),
+                    ("ccw", cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)),
+                    ("180", cv2.rotate(frame, cv2.ROTATE_180)),
+                ]
+            )
+
+        detections: list[Detection] = []
+        for transform_name, transformed_frame in transforms:
+            for detection in self._detect_dnn(transformed_frame):
+                detections.append(self._map_detection_to_original(detection, transform_name, frame.shape[:2]))
+        return detections
+
     def _detect_dnn(self, frame: np.ndarray) -> list[Detection]:
         if self.dnn is None:
             return []
@@ -100,6 +119,71 @@ class ObjectDetector:
                 continue
             detections.append(Detection(label="person", confidence=confidence, box=(x1, y1, box_width, box_height)))
         return detections
+
+    def _map_detection_to_original(self, detection: Detection, transform_name: str, original_shape: tuple[int, int]) -> Detection:
+        if transform_name == "none":
+            return detection
+
+        original_height, original_width = original_shape
+        x, y, width, height = detection.box
+        corners = [(x, y), (x + width, y), (x, y + height), (x + width, y + height)]
+
+        mapped = []
+        for corner_x, corner_y in corners:
+            if transform_name == "cw":
+                mapped.append((corner_y, original_height - corner_x))
+            elif transform_name == "ccw":
+                mapped.append((original_width - corner_y, corner_x))
+            else:
+                mapped.append((original_width - corner_x, original_height - corner_y))
+
+        xs = [point[0] for point in mapped]
+        ys = [point[1] for point in mapped]
+        x1 = max(0, min(int(min(xs)), original_width - 1))
+        y1 = max(0, min(int(min(ys)), original_height - 1))
+        x2 = max(0, min(int(max(xs)), original_width - 1))
+        y2 = max(0, min(int(max(ys)), original_height - 1))
+        return Detection(label=detection.label, confidence=detection.confidence, box=(x1, y1, max(1, x2 - x1), max(1, y2 - y1)))
+
+    def _post_process(self, frame: np.ndarray, detections: list[Detection]) -> list[Detection]:
+        if not detections:
+            return []
+
+        detections = [detection for detection in detections if self._is_reasonable_person_box(frame, detection)]
+        if not detections:
+            return []
+
+        padded = [self._pad_box(frame, detection) for detection in detections]
+        padded = [detection for detection in padded if self._is_reasonable_person_box(frame, detection)]
+        if not padded:
+            return []
+
+        boxes = [list(detection.box) for detection in padded]
+        scores = [float(detection.confidence) for detection in padded]
+        keep = cv2.dnn.NMSBoxes(boxes, scores, settings.object_confidence_threshold, settings.person_nms_threshold)
+        if len(keep) == 0:
+            return []
+
+        indices = np.array(keep).flatten().tolist()
+        selected = [padded[index] for index in indices]
+        return sorted(selected, key=lambda item: item.confidence, reverse=True)
+
+    def _is_reasonable_person_box(self, frame: np.ndarray, detection: Detection) -> bool:
+        frame_height, frame_width = frame.shape[:2]
+        _, _, width, height = detection.box
+        area_ratio = (width * height) / max(frame_width * frame_height, 1)
+        return area_ratio <= settings.person_max_area_ratio
+
+    def _pad_box(self, frame: np.ndarray, detection: Detection) -> Detection:
+        frame_height, frame_width = frame.shape[:2]
+        x, y, width, height = detection.box
+        pad_x = int(width * settings.person_box_padding)
+        pad_y = int(height * settings.person_box_padding)
+        x1 = max(0, x - pad_x)
+        y1 = max(0, y - pad_y)
+        x2 = min(frame_width - 1, x + width + pad_x)
+        y2 = min(frame_height - 1, y + height + pad_y)
+        return Detection(label=detection.label, confidence=detection.confidence, box=(x1, y1, max(1, x2 - x1), max(1, y2 - y1)))
 
     def _detect_people(self, frame: np.ndarray) -> list[Detection]:
         resized = cv2.resize(frame, (640, int(frame.shape[0] * 640 / frame.shape[1])))

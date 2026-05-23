@@ -100,6 +100,10 @@ class Settings:
     object_detection_enabled: bool = _bool("OBJECT_DETECTION_ENABLED", True)
     object_detection_backend: str = os.getenv("OBJECT_DETECTION_BACKEND", "auto")
     object_confidence_threshold: float = _float("OBJECT_CONFIDENCE_THRESHOLD", 0.35)
+    person_nms_threshold: float = _float("PERSON_NMS_THRESHOLD", 0.35)
+    person_box_padding: float = _float("PERSON_BOX_PADDING", 0.08)
+    person_max_area_ratio: float = _float("PERSON_MAX_AREA_RATIO", 0.85)
+    person_rotation_detection: bool = _bool("PERSON_ROTATION_DETECTION", True)
     dnn_model_dir: Path = Path(os.getenv("DNN_MODEL_DIR", "models"))
     dnn_prototxt_url: str = os.getenv(
         "DNN_PROTOTXT_URL",

@@ -62,6 +62,10 @@ Important variables:
 - `OBJECT_DETECTION_ENABLED`: Enables person annotations on saved frames.
 - `OBJECT_DETECTION_BACKEND`: `auto`, `dnn`, or `opencv`. `auto` uses OpenCV DNN and falls back to HOG person detection.
 - `OBJECT_CONFIDENCE_THRESHOLD`: Minimum DNN person confidence.
+- `PERSON_ROTATION_DETECTION`: Detects people across rotated frame orientations, useful for sideways phone/IP camera feeds.
+- `PERSON_BOX_PADDING`: Expands person boxes slightly so the annotation covers the full visible body better.
+- `PERSON_MAX_AREA_RATIO`: Rejects suspicious full-frame person boxes.
+- `PERSON_NMS_THRESHOLD`: Suppresses duplicate person boxes.
 - `AI_MAX_WORDS`: Keeps Ollama summaries short for dashboard readability.
 - `AI_MIN_INTERVAL_SECONDS`: Minimum delay between Ollama calls per camera. Use `0` for every analyzed frame.
 - `AI_ERROR_BACKOFF_SECONDS`: Cooldown after local Ollama errors.
