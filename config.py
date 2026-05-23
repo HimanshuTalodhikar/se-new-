@@ -95,7 +95,7 @@ class Settings:
     ai_enabled: bool = _bool("AI_ENABLED", True)
     gemini_retries: int = _int("GEMINI_RETRIES", 3)
     gemini_max_words: int = _int("GEMINI_MAX_WORDS", 22)
-    ai_min_interval_seconds: float = _float("AI_MIN_INTERVAL_SECONDS", 120.0)
+    ai_min_interval_seconds: float = _float("AI_MIN_INTERVAL_SECONDS", 0.0)
     ai_quota_backoff_seconds: float = _float("AI_QUOTA_BACKOFF_SECONDS", 3600.0)
     object_detection_enabled: bool = _bool("OBJECT_DETECTION_ENABLED", True)
     object_detection_backend: str = os.getenv("OBJECT_DETECTION_BACKEND", "auto")

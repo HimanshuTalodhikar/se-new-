@@ -44,7 +44,7 @@ class GeminiAnalyzer:
         now = time.time()
         if now < self.unavailable_until:
             return self._local_summary(detections, "Gemini quota cooldown active")
-        if now - self.last_analysis_at.get(camera_id, 0) < settings.ai_min_interval_seconds:
+        if settings.ai_min_interval_seconds > 0 and now - self.last_analysis_at.get(camera_id, 0) < settings.ai_min_interval_seconds:
             return self._local_summary(detections, "Gemini throttled")
 
         labels = [detection.get("label", "object") for detection in detections]

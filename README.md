@@ -62,7 +62,7 @@ Important variables:
 - `OBJECT_DETECTION_BACKEND`: `auto`, `dnn`, or `opencv`. `auto` uses OpenCV DNN and falls back to classical OpenCV detection.
 - `OBJECT_CONFIDENCE_THRESHOLD`: Minimum DNN detection confidence.
 - `GEMINI_MAX_WORDS`: Keeps Gemini summaries short for dashboard readability.
-- `AI_MIN_INTERVAL_SECONDS`: Minimum delay between Gemini calls per camera.
+- `AI_MIN_INTERVAL_SECONDS`: Minimum delay between Gemini calls per camera. Use `0` for every analyzed frame.
 - `AI_QUOTA_BACKOFF_SECONDS`: Cooldown after Gemini quota/rate-limit errors.
 
 Camera auth can be embedded directly:
