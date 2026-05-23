@@ -48,12 +48,12 @@ class GeminiAnalyzer:
             return self._local_summary(detections, "Gemini throttled")
 
         labels = [detection.get("label", "object") for detection in detections]
-        detection_summary = ", ".join(labels[:8]) if labels else "no object detections"
+        detection_summary = f"{len(labels)} person(s)" if labels else "no person detected"
         prompt = (
             "You are an AI surveillance assistant. Return exactly one short sentence, "
             f"maximum {settings.gemini_max_words} words. "
-            f"Camera: {camera_id}. OpenCV detections: {detection_summary}. "
-            "Mention only the key security observation."
+            f"Camera: {camera_id}. Person detection result: {detection_summary}. "
+            "Mention only whether a person is visible and the key security observation."
         )
         for attempt in range(1, settings.gemini_retries + 1):
             try:
@@ -72,9 +72,8 @@ class GeminiAnalyzer:
     def _local_summary(self, detections: list[dict[str, Any]], reason: str) -> str:
         labels = [str(detection.get("label", "object")) for detection in detections]
         if labels:
-            unique_labels = ", ".join(sorted(set(labels))[:4])
-            return f"{reason}; detected {len(labels)} object(s): {unique_labels}."
-        return f"{reason}; no objects detected."
+            return f"{reason}; detected {len(labels)} person(s)."
+        return f"{reason}; no person detected."
 
     def _shorten(self, text: str) -> str:
         words = text.strip().replace("\n", " ").split()

@@ -141,7 +141,7 @@ def _camera_card(camera: dict[str, Any], api_key: str) -> str:
         for detection in detections[:6]
     )
     if not detection_chips:
-        detection_chips = '<span class="chip muted">No objects</span>'
+        detection_chips = '<span class="chip muted">No person</span>'
     image_html = ""
     if image:
         image_html = (
@@ -161,7 +161,7 @@ def _camera_card(camera: dict[str, Any], api_key: str) -> str:
       </div>
       <div class="camera-metrics">
         <div><span>Frames</span><strong>{escape(str(camera.get("frame_count", 0)))}</strong></div>
-        <div><span>Objects</span><strong>{escape(str(camera.get("object_count", len(detections))))}</strong></div>
+        <div><span>Persons</span><strong>{escape(str(camera.get("object_count", len(detections))))}</strong></div>
         <div><span>Reconnects</span><strong>{escape(str(camera.get("reconnect_count", 0)))}</strong></div>
       </div>
       <div class="chips">{detection_chips}</div>
@@ -176,7 +176,7 @@ def _camera_card(camera: dict[str, Any], api_key: str) -> str:
 def dashboard(request: Request) -> str:
     api_key = request.query_params.get("api_key", "")
     status = collect_status()
-    object_count = sum(int(camera.get("object_count", len(camera.get("object_detections", [])))) for camera in status["camera_status"])
+    person_count = sum(int(camera.get("object_count", len(camera.get("object_detections", [])))) for camera in status["camera_status"])
     cameras = status["camera_status"] or [
         {"camera_id": camera_id, "camera_status": "waiting_for_worker", "worker_id": worker_id}
         for camera_id, worker_id in status["assignments"].items()
@@ -243,7 +243,7 @@ def dashboard(request: Request) -> str:
         <section class="metrics">
           <div class="metric"><span>Active workers</span><strong>{status["active_workers"]}</strong></div>
           <div class="metric"><span>Total frames</span><strong>{status["frame_count"]}</strong></div>
-          <div class="metric"><span>Objects detected</span><strong>{object_count}</strong></div>
+          <div class="metric"><span>Persons detected</span><strong>{person_count}</strong></div>
           <div class="metric"><span>Reconnects</span><strong>{status["reconnect_count"]}</strong></div>
           <div class="metric"><span>Kafka</span><strong>{ "Online" if status["kafka"].get("connected") else "Offline" }</strong></div>
         </section>

@@ -58,9 +58,9 @@ Important variables:
 - `PROCESS_EVERY_N_FRAMES`: Frame sampling interval.
 - `TARGET_FPS`: Worker read throttle.
 - `FRAME_QUEUE_SIZE`: Small queue used to drop stale frames during overload.
-- `OBJECT_DETECTION_ENABLED`: Enables OpenCV object annotations on saved frames.
-- `OBJECT_DETECTION_BACKEND`: `auto`, `dnn`, or `opencv`. `auto` uses OpenCV DNN and falls back to classical OpenCV detection.
-- `OBJECT_CONFIDENCE_THRESHOLD`: Minimum DNN detection confidence.
+- `OBJECT_DETECTION_ENABLED`: Enables person annotations on saved frames.
+- `OBJECT_DETECTION_BACKEND`: `auto`, `dnn`, or `opencv`. `auto` uses OpenCV DNN and falls back to HOG person detection.
+- `OBJECT_CONFIDENCE_THRESHOLD`: Minimum DNN person confidence.
 - `GEMINI_MAX_WORDS`: Keeps Gemini summaries short for dashboard readability.
 - `AI_MIN_INTERVAL_SECONDS`: Minimum delay between Gemini calls per camera. Use `0` for every analyzed frame.
 - `AI_QUOTA_BACKOFF_SECONDS`: Cooldown after Gemini quota/rate-limit errors.
@@ -110,24 +110,21 @@ For larger deployments, add more worker services or run the same worker image wi
 
 Workers drop stale queued frames under overload instead of building unbounded memory pressure. Tune `TARGET_FPS`, `PROCESS_EVERY_N_FRAMES`, and `FRAME_QUEUE_SIZE` based on GPU/CPU/network capacity.
 
-## Object Detection
+## Person Detection
 
-Workers run object detection before publishing frame events. By default, the detector uses OpenCV DNN with MobileNet-SSD for general objects and falls back to lightweight classical OpenCV detection if the DNN model is unavailable.
+Workers run person-only detection before publishing frame events. This is tuned for home security, so non-security objects such as tables, chairs, bottles, and TVs are ignored.
 
 OpenCV fallback includes:
 
 - HOG people detection
-- Haar face detection
-- motion contour detection
 
-Each saved frame produces an annotated latest image plus object metadata:
+Each saved frame produces an annotated latest image plus person metadata:
 
 ```json
 {
-  "object_count": 2,
+  "object_count": 1,
   "object_detections": [
-    {"label": "person", "confidence": 0.84},
-    {"label": "motion", "confidence": 0.41}
+    {"label": "person", "confidence": 0.84}
   ]
 }
 ```
@@ -170,7 +167,7 @@ The dashboard shows:
 
 - all cameras
 - assigned worker
-- object detection labels and counts
+- person detection labels and counts
 - latest AI summary
 - frame count
 - health status
