@@ -1,5 +1,6 @@
 .env
 runtime/
+models/
 detections/*_latest.jpg
 __pycache__/
 *.pyc

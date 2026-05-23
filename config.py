@@ -98,6 +98,17 @@ class Settings:
     ai_min_interval_seconds: float = _float("AI_MIN_INTERVAL_SECONDS", 120.0)
     ai_quota_backoff_seconds: float = _float("AI_QUOTA_BACKOFF_SECONDS", 3600.0)
     object_detection_enabled: bool = _bool("OBJECT_DETECTION_ENABLED", True)
+    object_detection_backend: str = os.getenv("OBJECT_DETECTION_BACKEND", "auto")
+    object_confidence_threshold: float = _float("OBJECT_CONFIDENCE_THRESHOLD", 0.35)
+    dnn_model_dir: Path = Path(os.getenv("DNN_MODEL_DIR", "models"))
+    dnn_prototxt_url: str = os.getenv(
+        "DNN_PROTOTXT_URL",
+        "https://raw.githubusercontent.com/chuanqi305/MobileNet-SSD/master/deploy.prototxt",
+    )
+    dnn_model_url: str = os.getenv(
+        "DNN_MODEL_URL",
+        "https://raw.githubusercontent.com/chuanqi305/MobileNet-SSD/master/mobilenet_iter_73000.caffemodel",
+    )
     reconnect_delay_seconds: float = _float("RECONNECT_DELAY_SECONDS", 5.0)
     frame_queue_size: int = _int("FRAME_QUEUE_SIZE", 2)
 
@@ -109,3 +120,4 @@ class Settings:
 settings = Settings()
 settings.detections_dir.mkdir(parents=True, exist_ok=True)
 settings.runtime_dir.mkdir(parents=True, exist_ok=True)
+settings.dnn_model_dir.mkdir(parents=True, exist_ok=True)

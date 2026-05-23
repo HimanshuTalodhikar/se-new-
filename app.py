@@ -145,8 +145,10 @@ def _camera_card(camera: dict[str, Any], api_key: str) -> str:
     image_html = ""
     if image:
         image_html = (
-            f'<div class="frame-wrap"><img src="{image}?api_key={api_key}&t={time.time()}" '
-            f'alt="Latest frame for {escape(str(camera.get("camera_id", "camera")))}" /></div>'
+            f'<button class="frame-wrap" type="button" data-full-src="{image}?api_key={api_key}&t={time.time()}">'
+            f'<img src="{image}?api_key={api_key}&t={time.time()}" '
+            f'alt="Latest frame for {escape(str(camera.get("camera_id", "camera")))}" />'
+            '<span>Click to view full frame</span></button>'
         )
     return f"""
     <article class="camera">
@@ -217,8 +219,13 @@ def dashboard(request: Request) -> str:
         .chip b {{ color: #8ee6ff; font-weight: 700; }}
         .chip.muted {{ color: #99a8b8; background: #121923; border-color: #2a3643; }}
         .summary {{ background: #0d141b; border-left: 3px solid #30d19d; padding: 12px; min-height: 44px; margin: 0; color: #d6e2eb; }}
-        .frame-wrap {{ border-radius: 8px; overflow: hidden; border: 1px solid #2b3d4f; background: #05080c; }}
-        img {{ width: 100%; display: block; aspect-ratio: 16 / 9; object-fit: cover; }}
+        .frame-wrap {{ border-radius: 8px; overflow: hidden; border: 1px solid #2b3d4f; background: #05080c; padding: 0; cursor: zoom-in; position: relative; width: 100%; }}
+        .frame-wrap img {{ width: 100%; display: block; max-height: 420px; object-fit: contain; background: #05080c; }}
+        .frame-wrap span {{ position: absolute; right: 10px; bottom: 10px; background: rgba(5, 8, 12, .78); color: #dff7ff; border: 1px solid #2b3d4f; border-radius: 999px; padding: 6px 10px; font-size: 12px; }}
+        .image-modal {{ position: fixed; inset: 0; z-index: 20; display: none; align-items: center; justify-content: center; background: rgba(2, 6, 10, .92); padding: 22px; }}
+        .image-modal.open {{ display: flex; }}
+        .image-modal img {{ max-width: 100%; max-height: 100%; object-fit: contain; border: 1px solid #30465a; border-radius: 8px; background: #05080c; }}
+        .image-modal button {{ position: fixed; top: 18px; right: 18px; border: 1px solid #385067; background: #111b25; color: #f7fbff; border-radius: 8px; padding: 10px 14px; cursor: pointer; }}
         footer {{ color: #8597a8; font-size: 12px; }}
         table {{ width: 100%; border-collapse: collapse; overflow: hidden; }}
         th, td {{ text-align: left; padding: 12px; border-bottom: 1px solid #2b3846; }}
@@ -249,6 +256,28 @@ def dashboard(request: Request) -> str:
           </table>
         </section>
       </main>
+      <div class="image-modal" id="image-modal">
+        <button type="button" id="modal-close">Close</button>
+        <img alt="Full camera frame" id="modal-image" />
+      </div>
+      <script>
+        const modal = document.getElementById("image-modal");
+        const modalImage = document.getElementById("modal-image");
+        const closeModal = () => modal.classList.remove("open");
+        document.querySelectorAll(".frame-wrap").forEach((button) => {{
+          button.addEventListener("click", () => {{
+            modalImage.src = button.dataset.fullSrc;
+            modal.classList.add("open");
+          }});
+        }});
+        document.getElementById("modal-close").addEventListener("click", closeModal);
+        modal.addEventListener("click", (event) => {{
+          if (event.target === modal) closeModal();
+        }});
+        document.addEventListener("keydown", (event) => {{
+          if (event.key === "Escape") closeModal();
+        }});
+      </script>
     </body>
     </html>
     """

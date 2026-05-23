@@ -59,6 +59,8 @@ Important variables:
 - `TARGET_FPS`: Worker read throttle.
 - `FRAME_QUEUE_SIZE`: Small queue used to drop stale frames during overload.
 - `OBJECT_DETECTION_ENABLED`: Enables OpenCV object annotations on saved frames.
+- `OBJECT_DETECTION_BACKEND`: `auto`, `dnn`, or `opencv`. `auto` uses OpenCV DNN and falls back to classical OpenCV detection.
+- `OBJECT_CONFIDENCE_THRESHOLD`: Minimum DNN detection confidence.
 - `GEMINI_MAX_WORDS`: Keeps Gemini summaries short for dashboard readability.
 - `AI_MIN_INTERVAL_SECONDS`: Minimum delay between Gemini calls per camera.
 - `AI_QUOTA_BACKOFF_SECONDS`: Cooldown after Gemini quota/rate-limit errors.
@@ -110,7 +112,9 @@ Workers drop stale queued frames under overload instead of building unbounded me
 
 ## Object Detection
 
-Workers run lightweight OpenCV object detection before publishing frame events. The detector currently uses:
+Workers run object detection before publishing frame events. By default, the detector uses OpenCV DNN with MobileNet-SSD for general objects and falls back to lightweight classical OpenCV detection if the DNN model is unavailable.
+
+OpenCV fallback includes:
 
 - HOG people detection
 - Haar face detection
@@ -128,7 +132,7 @@ Each saved frame produces an annotated latest image plus object metadata:
 }
 ```
 
-This keeps the demo fully runnable without downloading model weights. For a heavier production deployment, `object_detector.py` can be swapped for YOLO, TensorRT, OpenVINO, or a cloud vision model while keeping the same worker/dashboard contract.
+The DNN model files are cached in `models/` and ignored by Git. For a heavier production deployment, `object_detector.py` can be swapped for YOLO, TensorRT, OpenVINO, or a cloud vision model while keeping the same worker/dashboard contract.
 
 ## WSL And Cross-Platform Networking
 
