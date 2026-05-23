@@ -29,6 +29,8 @@ class GeminiAnalyzer:
     def __init__(self) -> None:
         self.enabled = settings.ai_enabled and bool(settings.gemini_api_key)
         self.model = None
+        self.last_analysis_at: dict[str, float] = {}
+        self.unavailable_until = 0.0
         if self.enabled:
             import google.generativeai as genai
 
@@ -38,6 +40,12 @@ class GeminiAnalyzer:
     def analyze(self, camera_id: str, detections: list[dict[str, Any]]) -> str:
         if not self.enabled:
             return "AI analysis disabled or GEMINI_API_KEY not configured."
+
+        now = time.time()
+        if now < self.unavailable_until:
+            return self._local_summary(detections, "Gemini quota cooldown active")
+        if now - self.last_analysis_at.get(camera_id, 0) < settings.ai_min_interval_seconds:
+            return self._local_summary(detections, "Gemini throttled")
 
         labels = [detection.get("label", "object") for detection in detections]
         detection_summary = ", ".join(labels[:8]) if labels else "no object detections"
@@ -50,11 +58,29 @@ class GeminiAnalyzer:
         for attempt in range(1, settings.gemini_retries + 1):
             try:
                 response = self.model.generate_content(prompt)
-                return getattr(response, "text", "") or "No AI summary returned."
+                self.last_analysis_at[camera_id] = time.time()
+                return self._shorten(getattr(response, "text", "") or "No AI summary returned.")
             except Exception as exc:
-                logger.warning("Gemini attempt failed", extra={"_camera_id": camera_id, "_attempt": attempt, "_error": str(exc)})
+                error = str(exc)
+                logger.warning("Gemini attempt failed", extra={"_camera_id": camera_id, "_attempt": attempt, "_error": error})
+                if "429" in error or "quota" in error.lower():
+                    self.unavailable_until = time.time() + settings.ai_quota_backoff_seconds
+                    return self._local_summary(detections, "Gemini quota exceeded")
                 time.sleep(min(2 * attempt, 10))
         return "Gemini analysis failed after retries."
+
+    def _local_summary(self, detections: list[dict[str, Any]], reason: str) -> str:
+        labels = [str(detection.get("label", "object")) for detection in detections]
+        if labels:
+            unique_labels = ", ".join(sorted(set(labels))[:4])
+            return f"{reason}; detected {len(labels)} object(s): {unique_labels}."
+        return f"{reason}; no objects detected."
+
+    def _shorten(self, text: str) -> str:
+        words = text.strip().replace("\n", " ").split()
+        if len(words) <= settings.gemini_max_words:
+            return " ".join(words)
+        return " ".join(words[: settings.gemini_max_words]).rstrip(".,;:") + "."
 
 
 class CameraProcessor:

@@ -60,6 +60,8 @@ Important variables:
 - `FRAME_QUEUE_SIZE`: Small queue used to drop stale frames during overload.
 - `OBJECT_DETECTION_ENABLED`: Enables OpenCV object annotations on saved frames.
 - `GEMINI_MAX_WORDS`: Keeps Gemini summaries short for dashboard readability.
+- `AI_MIN_INTERVAL_SECONDS`: Minimum delay between Gemini calls per camera.
+- `AI_QUOTA_BACKOFF_SECONDS`: Cooldown after Gemini quota/rate-limit errors.
 
 Camera auth can be embedded directly:
 
