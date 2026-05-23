@@ -1,17 +1,139 @@
 services:
-  camera-app:
-
+  dashboard:
     build: .
-
-    container_name: camera-app
-
+    container_name: surveillance-dashboard
     ports:
-      - "8000:8000"
-
+      - "127.0.0.1:8000:8000"
+    environment:
+      DASHBOARD_API_KEY: ${DASHBOARD_API_KEY:-change-me}
+      LOAD_BALANCER_URL: http://load-balancer:9000
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      RUNTIME_DIR: /app/runtime
+      DETECTIONS_DIR: /app/detections
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
-      - .:/app
       - ./detections:/app/detections
-
-    restart: "no"
-
+      - ./runtime:/app/runtime
+    depends_on:
+      - load-balancer
+      - kafka
+    restart: unless-stopped
     command: python -u app.py
+
+  load-balancer:
+    build: .
+    container_name: surveillance-load-balancer
+    expose:
+      - "9000"
+    environment:
+      CAMERAS: '${CAMERAS:-{"camera1":"http://192.0.0.4:8080/video"}}'
+      CAMERA_AUTH_JSON: '${CAMERA_AUTH_JSON:-{}}'
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      RUNTIME_DIR: /app/runtime
+      DETECTIONS_DIR: /app/detections
+      WORKER_STALE_AFTER: ${WORKER_STALE_AFTER:-20}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./detections:/app/detections
+      - ./runtime:/app/runtime
+    depends_on:
+      - kafka
+    restart: unless-stopped
+    command: python -u load_balancer.py
+
+  worker1:
+    build: .
+    container_name: surveillance-worker1
+    environment: &worker-env
+      WORKER_ID: worker1
+      LOAD_BALANCER_URL: http://load-balancer:9000
+      CAMERAS: '${CAMERAS:-{"camera1":"http://192.0.0.4:8080/video"}}'
+      CAMERA_AUTH_JSON: '${CAMERA_AUTH_JSON:-{}}'
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      AI_ENABLED: ${AI_ENABLED:-true}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      HOST_OS: ${HOST_OS:-auto}
+      WSL_USE_HOST_DOCKER_INTERNAL: ${WSL_USE_HOST_DOCKER_INTERNAL:-true}
+      PROCESS_EVERY_N_FRAMES: ${PROCESS_EVERY_N_FRAMES:-30}
+      TARGET_FPS: ${TARGET_FPS:-8}
+      FRAME_QUEUE_SIZE: ${FRAME_QUEUE_SIZE:-2}
+      RUNTIME_DIR: /app/runtime
+      DETECTIONS_DIR: /app/detections
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./detections:/app/detections
+      - ./runtime:/app/runtime
+    depends_on:
+      - load-balancer
+      - kafka
+    restart: unless-stopped
+    command: python -u worker.py
+
+  worker2:
+    build: .
+    container_name: surveillance-worker2
+    environment:
+      <<: *worker-env
+      WORKER_ID: worker2
+    volumes:
+      - ./detections:/app/detections
+      - ./runtime:/app/runtime
+    depends_on:
+      - load-balancer
+      - kafka
+    restart: unless-stopped
+    command: python -u worker.py
+
+  worker3:
+    build: .
+    container_name: surveillance-worker3
+    environment:
+      <<: *worker-env
+      WORKER_ID: worker3
+    volumes:
+      - ./detections:/app/detections
+      - ./runtime:/app/runtime
+    depends_on:
+      - load-balancer
+      - kafka
+    restart: unless-stopped
+    command: python -u worker.py
+
+  kafka-consumer:
+    build: .
+    container_name: surveillance-kafka-consumer
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      RUNTIME_DIR: /app/runtime
+      DETECTIONS_DIR: /app/detections
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      - kafka
+    restart: unless-stopped
+    command: python -u kafka_consumer.py
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    container_name: surveillance-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: surveillance-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "127.0.0.1:9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    restart: unless-stopped
