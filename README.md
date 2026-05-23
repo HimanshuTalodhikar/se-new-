@@ -58,6 +58,8 @@ Important variables:
 - `PROCESS_EVERY_N_FRAMES`: Frame sampling interval.
 - `TARGET_FPS`: Worker read throttle.
 - `FRAME_QUEUE_SIZE`: Small queue used to drop stale frames during overload.
+- `OBJECT_DETECTION_ENABLED`: Enables OpenCV object annotations on saved frames.
+- `GEMINI_MAX_WORDS`: Keeps Gemini summaries short for dashboard readability.
 
 Camera auth can be embedded directly:
 
@@ -104,6 +106,28 @@ For larger deployments, add more worker services or run the same worker image wi
 
 Workers drop stale queued frames under overload instead of building unbounded memory pressure. Tune `TARGET_FPS`, `PROCESS_EVERY_N_FRAMES`, and `FRAME_QUEUE_SIZE` based on GPU/CPU/network capacity.
 
+## Object Detection
+
+Workers run lightweight OpenCV object detection before publishing frame events. The detector currently uses:
+
+- HOG people detection
+- Haar face detection
+- motion contour detection
+
+Each saved frame produces an annotated latest image plus object metadata:
+
+```json
+{
+  "object_count": 2,
+  "object_detections": [
+    {"label": "person", "confidence": 0.84},
+    {"label": "motion", "confidence": 0.41}
+  ]
+}
+```
+
+This keeps the demo fully runnable without downloading model weights. For a heavier production deployment, `object_detector.py` can be swapped for YOLO, TensorRT, OpenVINO, or a cloud vision model while keeping the same worker/dashboard contract.
+
 ## WSL And Cross-Platform Networking
 
 `network_manager.py` detects the runtime using Python `platform` plus WSL hints. On Linux/macOS it uses the configured camera URL directly. On Windows/WSL2, local host camera URLs such as `http://127.0.0.1:8080/video` are rewritten to `http://host.docker.internal:8080/video` so containers can reach streams hosted on Windows.
@@ -140,6 +164,7 @@ The dashboard shows:
 
 - all cameras
 - assigned worker
+- object detection labels and counts
 - latest AI summary
 - frame count
 - health status
@@ -147,5 +172,6 @@ The dashboard shows:
 - Kafka status
 - worker load and health
 - latest frame
+- annotated detection boxes
 
 The page auto-refreshes every three seconds.

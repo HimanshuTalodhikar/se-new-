@@ -15,6 +15,7 @@ from config import settings
 from kafka_producer import EventProducer
 from logging_config import configure_logging
 from network_manager import NetworkManager
+from object_detector import ObjectDetector
 
 configure_logging()
 logger = logging.getLogger("worker")
@@ -34,14 +35,17 @@ class GeminiAnalyzer:
             genai.configure(api_key=settings.gemini_api_key)
             self.model = genai.GenerativeModel(settings.gemini_model)
 
-    def analyze(self, camera_id: str) -> str:
+    def analyze(self, camera_id: str, detections: list[dict[str, Any]]) -> str:
         if not self.enabled:
             return "AI analysis disabled or GEMINI_API_KEY not configured."
 
+        labels = [detection.get("label", "object") for detection in detections]
+        detection_summary = ", ".join(labels[:8]) if labels else "no object detections"
         prompt = (
-            "You are an AI surveillance assistant. Analyze the latest saved frame context for "
-            f"{camera_id}. Explain what may be happening, whether anything suspicious exists, "
-            "and the most important observation. Keep it short and professional."
+            "You are an AI surveillance assistant. Return exactly one short sentence, "
+            f"maximum {settings.gemini_max_words} words. "
+            f"Camera: {camera_id}. OpenCV detections: {detection_summary}. "
+            "Mention only the key security observation."
         )
         for attempt in range(1, settings.gemini_retries + 1):
             try:
@@ -64,10 +68,13 @@ class CameraProcessor:
         self.reconnect_count = 0
         self.status = "starting"
         self.latest_frame = ""
+        self.latest_raw_frame = ""
         self.ai_summary = "Waiting for AI analysis..."
+        self.object_detections: list[dict[str, Any]] = []
         self.last_updated = ""
         self.stop_event = threading.Event()
         self.frame_queue: queue.Queue[Any] = queue.Queue(maxsize=settings.frame_queue_size)
+        self.detector = ObjectDetector()
         self.thread = threading.Thread(target=self.run, daemon=True, name=f"camera-{camera_id}")
 
     def start(self) -> None:
@@ -86,7 +93,10 @@ class CameraProcessor:
             "saved_frame_count": self.saved_frame_count,
             "reconnect_count": self.reconnect_count,
             "latest_frame": self.latest_frame,
+            "latest_raw_frame": self.latest_raw_frame,
             "ai_summary": self.ai_summary,
+            "object_detections": self.object_detections,
+            "object_count": len(self.object_detections),
             "last_updated": self.last_updated,
         }
 
@@ -97,14 +107,22 @@ class CameraProcessor:
     def _save_frame(self, frame: Any) -> None:
         self.saved_frame_count += 1
         safe_camera_id = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in self.camera_id)
-        filename = f"{safe_camera_id}_latest.jpg"
-        frame_path = settings.detections_dir / filename
-        cv2.imwrite(str(frame_path), frame)
-        self.latest_frame = f"/detections/{filename}"
+        raw_filename = f"{safe_camera_id}_raw_latest.jpg"
+        annotated_filename = f"{safe_camera_id}_latest.jpg"
+        raw_frame_path = settings.detections_dir / raw_filename
+        annotated_frame_path = settings.detections_dir / annotated_filename
+        cv2.imwrite(str(raw_frame_path), frame)
+        if settings.object_detection_enabled:
+            self.object_detections, annotated_frame = self.detector.detect(frame)
+        else:
+            self.object_detections, annotated_frame = [], frame
+        cv2.imwrite(str(annotated_frame_path), annotated_frame)
+        self.latest_raw_frame = f"/detections/{raw_filename}"
+        self.latest_frame = f"/detections/{annotated_filename}"
         self.last_updated = datetime.now(timezone.utc).isoformat()
 
         if self.saved_frame_count % max(settings.ai_every_n_saved_frames, 1) == 0:
-            self.ai_summary = self.analyzer.analyze(self.camera_id)
+            self.ai_summary = self.analyzer.analyze(self.camera_id, self.object_detections)
 
         event = {
             "camera_id": self.camera_id,
@@ -114,6 +132,9 @@ class CameraProcessor:
             "camera_status": self.status,
             "ai_summary": self.ai_summary,
             "frame_path": self.latest_frame,
+            "raw_frame_path": self.latest_raw_frame,
+            "object_detections": self.object_detections,
+            "object_count": len(self.object_detections),
             "reconnect_count": self.reconnect_count,
         }
         producer.publish(settings.camera_events_topic, event)

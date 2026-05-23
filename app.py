@@ -2,6 +2,7 @@ import json
 import logging
 import socket
 import time
+from html import escape
 from pathlib import Path
 from typing import Any
 
@@ -134,23 +135,37 @@ def api_status() -> dict[str, Any]:
 
 def _camera_card(camera: dict[str, Any], api_key: str) -> str:
     image = camera.get("latest_frame") or ""
+    detections = camera.get("object_detections") or []
+    detection_chips = "".join(
+        f'<span class="chip">{escape(str(detection.get("label", "object")))} <b>{escape(str(detection.get("confidence", "")))}</b></span>'
+        for detection in detections[:6]
+    )
+    if not detection_chips:
+        detection_chips = '<span class="chip muted">No objects</span>'
     image_html = ""
     if image:
-        image_html = f'<img src="{image}?api_key={api_key}&t={time.time()}" alt="Latest frame for {camera.get("camera_id", "camera")}" />'
+        image_html = (
+            f'<div class="frame-wrap"><img src="{image}?api_key={api_key}&t={time.time()}" '
+            f'alt="Latest frame for {escape(str(camera.get("camera_id", "camera")))}" /></div>'
+        )
     return f"""
     <article class="camera">
       <div class="row">
-        <h2>{camera.get("camera_id", "Unknown camera")}</h2>
-        <span class="pill">{camera.get("camera_status", "unknown")}</span>
+        <div>
+          <h2>{escape(str(camera.get("camera_id", "Unknown camera")))}</h2>
+          <small>{escape(str(camera.get("worker_id", "unassigned")))}</small>
+        </div>
+        <span class="pill">{escape(str(camera.get("camera_status", "unknown")))}</span>
       </div>
-      <div class="grid">
-        <span>Worker</span><strong>{camera.get("worker_id", "unassigned")}</strong>
-        <span>Frames</span><strong>{camera.get("frame_count", 0)}</strong>
-        <span>Reconnects</span><strong>{camera.get("reconnect_count", 0)}</strong>
-        <span>Updated</span><strong>{camera.get("last_updated", "waiting")}</strong>
+      <div class="camera-metrics">
+        <div><span>Frames</span><strong>{escape(str(camera.get("frame_count", 0)))}</strong></div>
+        <div><span>Objects</span><strong>{escape(str(camera.get("object_count", len(detections))))}</strong></div>
+        <div><span>Reconnects</span><strong>{escape(str(camera.get("reconnect_count", 0)))}</strong></div>
       </div>
-      <p class="summary">{camera.get("ai_summary", "Waiting for AI analysis...")}</p>
+      <div class="chips">{detection_chips}</div>
+      <p class="summary">{escape(str(camera.get("ai_summary", "Waiting for AI analysis...")))}</p>
       {image_html}
+      <footer>Updated {escape(str(camera.get("last_updated", "waiting")))}</footer>
     </article>
     """
 
@@ -159,12 +174,13 @@ def _camera_card(camera: dict[str, Any], api_key: str) -> str:
 def dashboard(request: Request) -> str:
     api_key = request.query_params.get("api_key", "")
     status = collect_status()
+    object_count = sum(int(camera.get("object_count", len(camera.get("object_detections", [])))) for camera in status["camera_status"])
     cameras = status["camera_status"] or [
         {"camera_id": camera_id, "camera_status": "waiting_for_worker", "worker_id": worker_id}
         for camera_id, worker_id in status["assignments"].items()
     ]
     worker_rows = "".join(
-        f"<tr><td>{worker.get('worker_id')}</td><td>{worker.get('status')}</td><td>{len(worker.get('active_cameras', []))}</td><td>{worker.get('frame_count', 0)}</td><td>{worker.get('reconnect_count', 0)}</td></tr>"
+        f"<tr><td>{escape(str(worker.get('worker_id')))}</td><td><span class=\"table-pill\">{escape(str(worker.get('status')))}</span></td><td>{len(worker.get('active_cameras', []))}</td><td>{escape(str(worker.get('frame_count', 0)))}</td><td>{escape(str(worker.get('reconnect_count', 0)))}</td></tr>"
         for worker in status["worker_status"]
     )
     camera_cards = "".join(_camera_card(camera, api_key) for camera in cameras)
@@ -175,23 +191,40 @@ def dashboard(request: Request) -> str:
       <title>AI Surveillance Dashboard</title>
       <meta http-equiv="refresh" content="3">
       <style>
-        body {{ margin: 0; background: #101418; color: #f8fafc; font-family: Arial, sans-serif; }}
-        header {{ padding: 24px 32px; border-bottom: 1px solid #26313d; background: #151b22; }}
-        h1 {{ margin: 0 0 8px; font-size: 28px; }}
-        main {{ padding: 24px 32px; display: grid; gap: 20px; }}
-        .metrics, .cameras {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }}
-        .metric, .camera, table {{ background: #18212b; border: 1px solid #2b3846; border-radius: 8px; padding: 16px; }}
-        .metric span, .grid span {{ color: #9aa8b5; font-size: 13px; }}
-        .metric strong {{ display: block; font-size: 24px; margin-top: 6px; }}
-        .row {{ display: flex; justify-content: space-between; align-items: center; gap: 12px; }}
+        * {{ box-sizing: border-box; }}
+        body {{ margin: 0; background: #090d12; color: #f7fbff; font-family: Inter, Arial, sans-serif; }}
+        body::before {{ content: ""; position: fixed; inset: 0; pointer-events: none; background: radial-gradient(circle at 25% 0%, rgba(39, 172, 142, .18), transparent 30%), radial-gradient(circle at 85% 10%, rgba(73, 144, 226, .16), transparent 26%); }}
+        header {{ position: relative; padding: 26px 32px; border-bottom: 1px solid #22303b; background: rgba(14, 20, 27, .92); backdrop-filter: blur(12px); }}
+        h1 {{ margin: 0 0 8px; font-size: 30px; letter-spacing: 0; }}
+        header div {{ color: #9fb0bf; }}
+        main {{ position: relative; padding: 24px 32px 34px; display: grid; gap: 22px; }}
+        .metrics, .cameras {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }}
+        .metric, .camera, table {{ background: linear-gradient(180deg, rgba(25, 34, 43, .98), rgba(16, 23, 31, .98)); border: 1px solid #2d3d4d; border-radius: 8px; box-shadow: 0 16px 36px rgba(0, 0, 0, .26); }}
+        .metric {{ padding: 17px; position: relative; overflow: hidden; }}
+        .metric::after {{ content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: linear-gradient(90deg, #30d19d, #52a8ff); }}
+        .metric span, .camera-metrics span {{ color: #9fb0bf; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }}
+        .metric strong {{ display: block; font-size: 25px; margin-top: 7px; }}
+        .camera {{ padding: 16px; display: grid; gap: 13px; }}
+        .row {{ display: flex; justify-content: space-between; align-items: start; gap: 12px; }}
         h2 {{ margin: 0; font-size: 18px; }}
-        .pill {{ background: #16382a; color: #7ee2a8; border: 1px solid #245b42; border-radius: 999px; padding: 4px 10px; font-size: 12px; }}
-        .grid {{ display: grid; grid-template-columns: 110px 1fr; gap: 8px; margin: 14px 0; }}
-        .summary {{ background: #111820; border-left: 3px solid #55c2ff; padding: 12px; min-height: 44px; }}
-        img {{ width: 100%; border-radius: 6px; border: 1px solid #2b3846; }}
-        table {{ width: 100%; border-collapse: collapse; }}
-        th, td {{ text-align: left; padding: 10px; border-bottom: 1px solid #2b3846; }}
-        th {{ color: #9aa8b5; font-weight: 600; }}
+        small {{ color: #9fb0bf; display: block; margin-top: 4px; }}
+        .pill, .table-pill {{ background: #123328; color: #82f0b6; border: 1px solid #236248; border-radius: 999px; padding: 5px 10px; font-size: 12px; white-space: nowrap; }}
+        .camera-metrics {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }}
+        .camera-metrics div {{ background: #0e151d; border: 1px solid #263645; border-radius: 8px; padding: 10px; min-width: 0; }}
+        .camera-metrics strong {{ display: block; margin-top: 4px; font-size: 18px; }}
+        .chips {{ display: flex; flex-wrap: wrap; gap: 8px; min-height: 28px; }}
+        .chip {{ color: #dff7ff; background: #173047; border: 1px solid #2c5b7a; border-radius: 999px; padding: 6px 10px; font-size: 12px; }}
+        .chip b {{ color: #8ee6ff; font-weight: 700; }}
+        .chip.muted {{ color: #99a8b8; background: #121923; border-color: #2a3643; }}
+        .summary {{ background: #0d141b; border-left: 3px solid #30d19d; padding: 12px; min-height: 44px; margin: 0; color: #d6e2eb; }}
+        .frame-wrap {{ border-radius: 8px; overflow: hidden; border: 1px solid #2b3d4f; background: #05080c; }}
+        img {{ width: 100%; display: block; aspect-ratio: 16 / 9; object-fit: cover; }}
+        footer {{ color: #8597a8; font-size: 12px; }}
+        table {{ width: 100%; border-collapse: collapse; overflow: hidden; }}
+        th, td {{ text-align: left; padding: 12px; border-bottom: 1px solid #2b3846; }}
+        th {{ color: #9fb0bf; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }}
+        section h2 {{ margin: 0 0 12px; }}
+        @media (max-width: 720px) {{ header, main {{ padding-left: 16px; padding-right: 16px; }} .camera-metrics {{ grid-template-columns: 1fr; }} }}
       </style>
     </head>
     <body>
@@ -203,6 +236,7 @@ def dashboard(request: Request) -> str:
         <section class="metrics">
           <div class="metric"><span>Active workers</span><strong>{status["active_workers"]}</strong></div>
           <div class="metric"><span>Total frames</span><strong>{status["frame_count"]}</strong></div>
+          <div class="metric"><span>Objects detected</span><strong>{object_count}</strong></div>
           <div class="metric"><span>Reconnects</span><strong>{status["reconnect_count"]}</strong></div>
           <div class="metric"><span>Kafka</span><strong>{ "Online" if status["kafka"].get("connected") else "Offline" }</strong></div>
         </section>

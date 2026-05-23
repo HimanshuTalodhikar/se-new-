@@ -94,6 +94,8 @@ class Settings:
     ai_every_n_saved_frames: int = _int("AI_EVERY_N_SAVED_FRAMES", 1)
     ai_enabled: bool = _bool("AI_ENABLED", True)
     gemini_retries: int = _int("GEMINI_RETRIES", 3)
+    gemini_max_words: int = _int("GEMINI_MAX_WORDS", 22)
+    object_detection_enabled: bool = _bool("OBJECT_DETECTION_ENABLED", True)
     reconnect_delay_seconds: float = _float("RECONNECT_DELAY_SECONDS", 5.0)
     frame_queue_size: int = _int("FRAME_QUEUE_SIZE", 2)
 
